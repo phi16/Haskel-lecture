@@ -5,6 +5,8 @@ import Control.Arrow
 import Control.Arrow.Operations
 import Control.Arrow.Transformer.Stream
 
+-- fix / loop
+
 sumStream :: StreamMap Int Int
 sumStream = proc x -> do
   rec
