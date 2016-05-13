@@ -83,23 +83,86 @@ parse p xs = safeHead $ filter (null.snd) $ runParser p xs where
   safeHead [] = Nothing
   safeHead (x:xs) = Just $ fst x
 
-expr :: Parser Double
-expr = term <|> do
-  l <- term
-  c <- char '+' <|> char '-'
-  r <- term
-  return $ if c == '+' then l + r else l - r
-term :: Parser Double
-term = fact <|> do
-  l <- fact
-  c <- char '*' <|> char '/'
-  r <- fact
-  return $ if c == '*' then l * r else l / r
-fact :: Parser Double
-fact = decimal <|> do
-  char '('
-  e <- expr
-  char ')'
-  return e
 eval :: String -> Maybe Double
-eval = parse expr
+eval = parse expr . filter (/=' ') where
+  expr :: Parser Double
+  expr = term <|> do
+    l <- term
+    c <- char '+' <|> char '-'
+    r <- term
+    return $ if c == '+' then l + r else l - r
+  term :: Parser Double
+  term = fact <|> do
+    l <- fact
+    c <- char '*' <|> char '/'
+    r <- fact
+    return $ if c == '*' then l * r else l / r
+  fact :: Parser Double
+  fact = decimal <|> do
+    char '('
+    e <- expr
+    char ')'
+    return e
+
+data Expr = Num Double
+          | X
+          | Add Expr Expr
+          | Sub Expr Expr
+          | Mul Expr Expr
+          | Div Expr Expr
+          | Pow Expr Expr
+          | Fun Func Expr
+  deriving Show
+
+data Func = Neg | Abs | Sgn
+          | Exp | Log | Sqr
+          | Sin | Cos | Tan
+  deriving Show
+
+readExpr :: String -> Maybe Expr
+readExpr = parse expr . filter (/=' ') where
+  expr :: Parser Expr
+  expr = term <|> do
+    l <- term
+    c <- char '+' <|> char '-'
+    r <- expr
+    return $ if c == '+' then Add l r else Sub l r
+  term :: Parser Expr
+  term = fact <|> do
+    l <- fact
+    c <- char '*' <|> char '/'
+    r <- term
+    return $ if c == '*' then Mul l r else Div l r
+  fact :: Parser Expr
+  fact = do
+    l <- negs
+    c <- optional $ char '^' >> fact
+    return $ case c of
+      Nothing -> l
+      Just r -> Pow l r
+  negs :: Parser Expr
+  negs = do
+    s <- optional $ char '-'
+    l <- lits
+    return $ case s of
+      Nothing -> l
+      Just _ -> Fun Neg l
+  lits :: Parser Expr
+  lits = fmap Num decimal <|> (char 'x' >> return X) <|> do
+    f <- optional $ foldr1 (<|>) [
+      string "abs" >> return Abs,
+      string "sgn" >> return Sgn,
+      string "exp" >> return Exp,
+      string "log" >> return Log,
+      string "sqrt" >> return Sqr,
+      string "sin" >> return Sin,
+      string "cos" >> return Cos,
+      string "tan" >> return Tan]
+    char '('
+    e <- expr
+    char ')'
+    return $ case f of
+      Nothing -> e
+      Just u -> Fun u e
+
+apply :: Expr -> Double -> Double
