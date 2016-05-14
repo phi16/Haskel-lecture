@@ -1,5 +1,3 @@
--- Differentiate
-
 {-# LANGUAGE LambdaCase #-}
 
 import Data.List
@@ -114,8 +112,7 @@ data Expr = Num Double
           | Fun Func Expr
   deriving Show
 
-data Func = Neg | Abs | Sgn
-          | Exp | Log | Sqr
+data Func = Neg | Exp | Log | Sqr
           | Sin | Cos | Tan
   deriving Show
 
@@ -150,8 +147,6 @@ readExpr = parse expr . filter (/=' ') where
   lits :: Parser Expr
   lits = fmap Num decimal <|> (char 'x' >> return X) <|> do
     f <- optional $ foldr1 (<|>) [
-      string "abs" >> return Abs,
-      string "sgn" >> return Sgn,
       string "exp" >> return Exp,
       string "log" >> return Log,
       string "sqrt" >> return Sqr,
@@ -166,3 +161,35 @@ readExpr = parse expr . filter (/=' ') where
       Just u -> Fun u e
 
 apply :: Expr -> Double -> Double
+apply (Num x) _ = x
+apply X x = x
+apply (Add l r) x = apply l x + apply r x
+apply (Sub l r) x = apply l x - apply r x
+apply (Mul l r) x = apply l x * apply r x
+apply (Div l r) x = apply l x / apply r x
+apply (Pow l r) x = apply l x ** apply r x
+apply (Fun f e) x = ($apply e x) $ case f of
+  Neg -> negate
+  Exp -> exp
+  Log -> log
+  Sqr -> sqrt
+  Sin -> sin
+  Cos -> cos
+  Tan -> tan
+
+diff :: Expr -> Expr
+diff (Num x) = Num 0
+diff X = Num 1
+diff (Add l r) = Add (diff l) (diff r)
+diff (Sub l r) = Sub (diff l) (diff r)
+diff (Mul l r) = Add (Mul r $ diff l) (Mul l $ diff r)
+diff (Div l r) = Div (Sub (Mul r $ diff l) (Mul l $ diff r)) $ Mul r r
+diff (Pow l r) = Mul (Pow l $ Sub r $ Num 1) $ Add (Mul r $ diff l) (Mul (Mul l $ Fun Log l) $ diff r)
+diff (Fun f e) = case f of
+  Neg -> Fun Neg $ diff' e
+  Exp -> Mul (diff' e) $ Fun Exp e
+  Log -> Div (diff' e) e
+  Sqr -> Div (diff' e) $ Mul (Num 2) (Fun Sqr e)
+  Sin -> Mul (diff' e) $ Fun Cos e
+  Cos -> Mul (diff' e) $ Fun Neg $ Fun Sin e
+  Tan -> Div (diff' e) $ Mul (Fun Cos e) (Fun Cos e)
