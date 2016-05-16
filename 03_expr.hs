@@ -87,13 +87,13 @@ eval = parse expr . filter (/=' ') where
   expr = term <|> do
     l <- term
     c <- char '+' <|> char '-'
-    r <- term
+    r <- expr
     return $ if c == '+' then l + r else l - r
   term :: Parser Double
   term = fact <|> do
     l <- fact
     c <- char '*' <|> char '/'
-    r <- fact
+    r <- term
     return $ if c == '*' then l * r else l / r
   fact :: Parser Double
   fact = decimal <|> do
@@ -186,10 +186,10 @@ diff (Mul l r) = Add (Mul r $ diff l) (Mul l $ diff r)
 diff (Div l r) = Div (Sub (Mul r $ diff l) (Mul l $ diff r)) $ Mul r r
 diff (Pow l r) = Mul (Pow l $ Sub r $ Num 1) $ Add (Mul r $ diff l) (Mul (Mul l $ Fun Log l) $ diff r)
 diff (Fun f e) = case f of
-  Neg -> Fun Neg $ diff' e
-  Exp -> Mul (diff' e) $ Fun Exp e
-  Log -> Div (diff' e) e
-  Sqr -> Div (diff' e) $ Mul (Num 2) (Fun Sqr e)
-  Sin -> Mul (diff' e) $ Fun Cos e
-  Cos -> Mul (diff' e) $ Fun Neg $ Fun Sin e
-  Tan -> Div (diff' e) $ Mul (Fun Cos e) (Fun Cos e)
+  Neg -> Fun Neg $ diff e
+  Exp -> Mul (diff e) $ Fun Exp e
+  Log -> Div (diff e) e
+  Sqr -> Div (diff e) $ Mul (Num 2) (Fun Sqr e)
+  Sin -> Mul (diff e) $ Fun Cos e
+  Cos -> Mul (diff e) $ Fun Neg $ Fun Sin e
+  Tan -> Div (diff e) $ Mul (Fun Cos e) (Fun Cos e)
