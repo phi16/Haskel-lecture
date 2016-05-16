@@ -1,9 +1,10 @@
 {-# LANGUAGE LambdaCase #-}
 
+import Prelude hiding (sum,product)
+import Data.List hiding (sum,product)
+import Data.Char
 import Control.Applicative
 import Control.Arrow
-import Data.Char
-import Data.List
 
 newtype Parser a = Parser (String -> [(a,String)])
 
@@ -43,38 +44,63 @@ parse (Parser f) xs = safeHead $ filter (null.snd) $ f xs where
   safeHead [] = Nothing
   safeHead (x:xs) = Just $ fst x
 
-data Reg = Chr Char
-         | Seq Reg Reg
-         | Alt Reg Reg
-         | Rep Reg
-         | Eps
-  deriving (Show)
+class Semiring a where
+  add :: a -> a -> a
+  mul :: a -> a -> a
+  zero :: a
+  one :: a
+  {- Laws
+    <+> is commutative monoid with unit zero
+    <*> is monoid with unit one
+    a*(b+c) = a*b + a*c
+    (a+b)*c = a*c + b*c
+    zero is absorbing element of <*>
+  -}
 
-readReg :: String -> Maybe Reg
+sum :: Semiring a => [a] -> a
+sum = foldr add zero
+product :: Semiring a => [a] -> a
+product = foldr mul one
+
+instance Semiring Bool where
+  add = (||)
+  mul = (&&)
+  zero = False
+  one = True
+
+instance Semiring Int where
+  add = (+)
+  mul = (*)
+  zero = 0
+  one = 1
+
+data Reg s = Chr (Char -> s)
+           | Seq (Reg s) (Reg s)
+           | Alt (Reg s) (Reg s)
+           | Rep (Reg s)
+           | Eps
+
+readReg :: Semiring r => String -> Maybe (Reg r)
 readReg str = parse reg str where
-  reg :: Parser Reg
   reg = (eps >> return Eps) <|> do
     l <- trm
     v <- optional $ char '|' >> reg
     return $ case v of
       Nothing -> l
       Just r -> Alt l r
-  trm :: Parser Reg
   trm = do
     l <- fct
     v <- optional trm
     return $ case v of
       Nothing -> l
       Just r -> Seq l r
-  fct :: Parser Reg
   fct = do
     e <- elm
     v <- optional $ char '*'
     return $ case v of
       Nothing -> e
       Just _ -> Rep e
-  elm :: Parser Reg
-  elm = (Chr <$> isChar isAlpha) <|> do
+  elm = (Chr . (\c c' -> if c==c' then one else zero) <$> isChar isAlpha) <|> do
     char '('
     e <- reg
     char ')'
@@ -83,11 +109,13 @@ readReg str = parse reg str where
 parts :: [a] -> [([a],[a])]
 parts s = zip (inits s) (tails s)
 
-match :: Reg -> String -> Bool
-match (Chr c) s = [c] == s
-match (Seq l r) s = any (\(x,y) -> match l x && match r y) $ parts s
-match (Alt l r) s = match l s || match r s
-match (Rep e) s = any (all $ match e) $ cuts s where
+match :: Semiring r => Reg r -> String -> r
+match (Chr c) s = case s of
+  [x] -> c x
+  _ -> zero
+match (Seq l r) s = sum $ map (\(x,y) -> match l x `mul` match r y) $ parts s
+match (Alt l r) s = match l s `add` match r s
+match (Rep e) s = sum $ map (product . map (match e)) $ cuts s where
   cuts [] = [[]]
   cuts xs = tail (parts xs) >>= \(as,bs) -> (as:) <$> cuts bs
-match Eps s = null s
+match Eps s = if null s then one else zero
