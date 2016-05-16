@@ -43,7 +43,7 @@ parse (Parser f) xs = safeHead $ filter (null.snd) $ f xs where
   safeHead [] = Nothing
   safeHead (x:xs) = Just $ fst x
 
-data Reg = Chr Char
+data Reg = Chr Bool Char
          | Seq Reg Reg
          | Alt Reg Reg
          | Rep Reg
@@ -74,7 +74,7 @@ readReg str = parse reg str where
       Nothing -> e
       Just _ -> Rep e
   elm :: Parser Reg
-  elm = (Chr <$> isChar isAlpha) <|> do
+  elm = (Chr False <$> isChar isAlpha) <|> do
     char '('
     e <- reg
     char ')'
@@ -83,11 +83,27 @@ readReg str = parse reg str where
 parts :: [a] -> [([a],[a])]
 parts s = zip (inits s) (tails s)
 
+epsilon :: Reg -> Bool
+epsilon (Chr b c) = False
+epsilon (Seq l r) = epsilon l && epsilon r
+epsilon (Alt l r) = epsilon l || epsilon r
+epsilon (Rep p) = True
+epsilon Eps = True
+complete :: Reg -> Bool
+complete (Chr b c) = b
+complete (Seq l r) = complete l && epsilon r || complete r
+complete (Alt l r) = complete l || complete r
+complete (Rep p) = complete p
+complete Eps = False
+shift :: Bool -> Reg -> Char -> Reg
+shift e (Chr b c) s = Chr (e && s == c) c
+shift e (Seq l r) s = Seq (shift e l s) (shift (e && epsilon l || complete l) r s)
+shift e (Alt l r) s = Alt (shift e l s) (shift e r s)
+shift e (Rep p) s = Rep $ shift (e || complete p) p s
+shift e Eps s = Eps
+
 match :: Reg -> String -> Bool
-match (Chr c) s = [c] == s
-match (Seq l r) s = any (\(x,y) -> match l x && match r y) $ parts s
-match (Alt l r) s = match l s || match r s
-match (Rep e) s = any (all $ match e) $ cuts s where
-  cuts [] = [[]]
-  cuts xs = tail (parts xs) >>= \(as,bs) -> (as:) <$> cuts bs
-match Eps s = null s
+match r [] = epsilon r
+match r (c:cs) = complete $ foldl (shift False) ini cs where
+  ini = shift True r c
+  
