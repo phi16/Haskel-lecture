@@ -115,7 +115,7 @@ instance Ord c => Semiring (Matches c) where
     | a > b = Matches (a,x)
     | otherwise = Matches (a,nub $ x++y)
   mul (Matches (a,x)) (Matches (b,y)) = Matches (a+b, liftA2 (++) x y)
-  zero = Matches (0,[])
+  zero = Matches (undefined,[])
   one = Matches (0,[[]])
 instance Ord c => Indexed c (Matches c) where
   ix c _ = Matches (1,[[c]])
@@ -151,11 +151,13 @@ readReg str = parse reg str where
     return $ case v of
       Nothing -> e
       Just _ -> repC e
-  elm = (chrC . (\c c' -> fromBool $ c==c') <$> isChar isAlpha) <|> do
+  elm = chi <|> any <|> do
     char '('
     e <- reg
     char ')'
     return e
+  chi = chrC . (\c c' -> fromBool $ c==c') <$> isChar isAlpha
+  any = chrC . (\c -> const one) <$> char '.'
 
 parts :: [a] -> [([a],[a])]
 parts s = zip (inits s) (tails s)
