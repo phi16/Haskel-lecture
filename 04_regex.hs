@@ -85,6 +85,16 @@ instance Semiring Int where
 instance Indexed c Int where
   ix _ _ = 1
 
+newtype MaxPlus = MaxPlus (Maybe Int)
+  deriving (Show)
+instance Semiring MaxPlus where
+  add (MaxPlus x) (MaxPlus y) = MaxPlus $ x`max`y
+  mul (MaxPlus x) (MaxPlus y) = MaxPlus $ liftA2 (+) x y
+  zero = MaxPlus Nothing
+  one = MaxPlus $ Just 0
+instance Indexed c MaxPlus where
+  ix _ i = MaxPlus $ Just 1
+
 data Range = Fail | Empty | Range (Int,Int)
   deriving (Show)
 instance Semiring Range where
