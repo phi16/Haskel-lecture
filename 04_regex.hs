@@ -61,6 +61,8 @@ sum :: Semiring a => [a] -> a
 sum = foldr add zero
 product :: Semiring a => [a] -> a
 product = foldr mul one
+fromBool :: Semiring a => Bool -> a
+fromBool x = if x then one else zero
 
 instance Semiring Bool where
   add = (||)
@@ -74,7 +76,7 @@ instance Semiring Int where
   zero = 0
   one = 1
 
-data Reg s = Chr (Char -> s)
+data Reg s = Chr s (Char -> s)
            | Seq (Reg s) (Reg s)
            | Alt (Reg s) (Reg s)
            | Rep (Reg s)
@@ -100,7 +102,7 @@ readReg str = parse reg str where
     return $ case v of
       Nothing -> e
       Just _ -> Rep e
-  elm = (Chr . (\c c' -> if c==c' then one else zero) <$> isChar isAlpha) <|> do
+  elm = (Chr zero . (\c c' -> fromBool $ c==c') <$> isChar isAlpha) <|> do
     char '('
     e <- reg
     char ')'
@@ -109,13 +111,26 @@ readReg str = parse reg str where
 parts :: [a] -> [([a],[a])]
 parts s = zip (inits s) (tails s)
 
+epsilon :: Semiring r => Reg r -> r
+epsilon (Chr b c) = zero
+epsilon (Seq l r) = epsilon l `mul` epsilon r
+epsilon (Alt l r) = epsilon l `add` epsilon r
+epsilon (Rep p) = one
+epsilon Eps = one
+complete :: Semiring r => Reg r -> r
+complete (Chr b c) = b
+complete (Seq l r) = (complete l `mul` epsilon r) `add` complete r
+complete (Alt l r) = complete l `add` complete r
+complete (Rep p) = complete p
+complete Eps = zero
+shift :: Semiring r => r -> Reg r -> Char -> Reg r
+shift e (Chr b c) s = Chr (e `mul` c s) c
+shift e (Seq l r) s = Seq (shift e l s) (shift ((e `mul` epsilon l) `add` complete l) r s)
+shift e (Alt l r) s = Alt (shift e l s) (shift e r s)
+shift e (Rep p) s = Rep $ shift (e `add` complete p) p s
+shift e Eps s = Eps
+
 match :: Semiring r => Reg r -> String -> r
-match (Chr c) s = case s of
-  [x] -> c x
-  _ -> zero
-match (Seq l r) s = sum $ map (\(x,y) -> match l x `mul` match r y) $ parts s
-match (Alt l r) s = match l s `add` match r s
-match (Rep e) s = sum $ map (product . map (match e)) $ cuts s where
-  cuts [] = [[]]
-  cuts xs = tail (parts xs) >>= \(as,bs) -> (as:) <$> cuts bs
-match Eps s = if null s then one else zero
+match r [] = epsilon r
+match r (c:cs) = complete $ foldl (shift zero) ini cs where
+  ini = shift one r c
