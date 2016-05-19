@@ -1,3 +1,6 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 
 import Prelude hiding (sum,product)
@@ -56,6 +59,8 @@ class Semiring a where
     (a+b)*c = a*c + b*c
     zero is absorbing element of <*>
   -}
+class Semiring a => Indexed c a where
+  ix :: c -> Int -> a
 
 sum :: Semiring a => [a] -> a
 sum = foldr add zero
@@ -69,12 +74,16 @@ instance Semiring Bool where
   mul = (&&)
   zero = False
   one = True
+instance Indexed c Bool where
+  ix _ _ = True
 
 instance Semiring Int where
   add = (+)
   mul = (*)
   zero = 0
   one = 1
+instance Indexed c Int where
+  ix _ _ = 1
 
 data Reg c s = Chr (c -> s)
            | Seq (RegC c s) (RegC c s)
@@ -140,3 +149,20 @@ match :: Semiring r => RegC c r -> [c] -> r
 match r [] = isEps r
 match r (c:cs) = isComp $ foldl (shiftR zero) ini cs where
   ini = shiftR one r c
+
+indexing :: Indexed c r => RegC c r -> RegC (c,Int) r
+indexing x = x { regC = ixing $ regC x } where
+  ixing :: Indexed c r => Reg c r -> Reg (c,Int) r
+  ixing (Chr c) = Chr $ \(s,i) -> c s `mul` ix s i
+  ixing (Seq l r) = Seq (indexing l) (indexing r)
+  ixing (Alt l r) = Alt (indexing l) (indexing r)
+  ixing (Rep p) = Rep (indexing p)
+  ixing Eps = Eps
+
+submatch :: Indexed c r => RegC c r -> [c] -> r
+submatch r s = match r' $ zip s [0..] where
+  r' = anyR`seqC`indexing r`seqC`anyR
+  anyR = repC $ chrC $ const one
+
+test x y = fmap ((\t -> match t y)) $ readReg x
+test' x y = fmap ((\t -> submatch t y)) $ readReg x
