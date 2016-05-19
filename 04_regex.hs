@@ -85,6 +85,41 @@ instance Semiring Int where
 instance Indexed c Int where
   ix _ _ = 1
 
+data Range = Fail | Empty | Range (Int,Int)
+  deriving (Show)
+instance Semiring Range where
+  add Fail x = x
+  add x Fail = x
+  add Empty x = x
+  add x Empty = x
+  add (Range (i,j)) (Range (k,l))
+    | i < k || i == k && j >= l = Range (i,j)
+    | otherwise = Range (k,l)
+  mul Fail x = Fail
+  mul x Fail = Fail
+  mul Empty x = x
+  mul x Empty = x
+  mul (Range (i,j)) (Range (k,l)) = Range (i,l)
+  zero = Fail
+  one = Empty
+instance Indexed c Range where
+  ix _ x = Range (x,x)
+
+newtype Matches c = Matches (Int,[[c]])
+  deriving (Show)
+instance Ord c => Semiring (Matches c) where
+  add (Matches (_,[])) y = y
+  add x (Matches (_,[])) = x
+  add (Matches (a,x)) (Matches (b,y))
+    | a < b = Matches (b,y)
+    | a > b = Matches (a,x)
+    | otherwise = Matches (a,nub $ x++y)
+  mul (Matches (a,x)) (Matches (b,y)) = Matches (a+b, liftA2 (++) x y)
+  zero = Matches (0,[])
+  one = Matches (0,[[]])
+instance Ord c => Indexed c (Matches c) where
+  ix c _ = Matches (1,[[c]])
+
 data Reg c s = Chr (c -> s)
            | Seq (RegC c s) (RegC c s)
            | Alt (RegC c s) (RegC c s)
