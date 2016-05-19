@@ -76,33 +76,38 @@ instance Semiring Int where
   zero = 0
   one = 1
 
-data Reg s = Chr s (Char -> s)
-           | Seq (Reg s) (Reg s)
-           | Alt (Reg s) (Reg s)
-           | Rep (Reg s)
+data Reg s = Chr (Char -> s)
+           | Seq (RegC s) (RegC s)
+           | Alt (RegC s) (RegC s)
+           | Rep (RegC s)
            | Eps
+data RegC s = RegC {
+  regC :: Reg s,
+  isEps :: s,
+  isComp :: s
+}
 
-readReg :: Semiring r => String -> Maybe (Reg r)
+readReg :: Semiring r => String -> Maybe (RegC r)
 readReg str = parse reg str where
-  reg = (eps >> return Eps) <|> do
+  reg = (eps >> return epsC) <|> do
     l <- trm
     v <- optional $ char '|' >> reg
     return $ case v of
       Nothing -> l
-      Just r -> Alt l r
+      Just r -> altC l r
   trm = do
     l <- fct
     v <- optional trm
     return $ case v of
       Nothing -> l
-      Just r -> Seq l r
+      Just r -> seqC l r
   fct = do
     e <- elm
     v <- optional $ char '*'
     return $ case v of
       Nothing -> e
-      Just _ -> Rep e
-  elm = (Chr zero . (\c c' -> fromBool $ c==c') <$> isChar isAlpha) <|> do
+      Just _ -> repC e
+  elm = (chrC . (\c c' -> fromBool $ c==c') <$> isChar isAlpha) <|> do
     char '('
     e <- reg
     char ')'
@@ -111,26 +116,28 @@ readReg str = parse reg str where
 parts :: [a] -> [([a],[a])]
 parts s = zip (inits s) (tails s)
 
-epsilon :: Semiring r => Reg r -> r
-epsilon (Chr b c) = zero
-epsilon (Seq l r) = epsilon l `mul` epsilon r
-epsilon (Alt l r) = epsilon l `add` epsilon r
-epsilon (Rep p) = one
-epsilon Eps = one
-complete :: Semiring r => Reg r -> r
-complete (Chr b c) = b
-complete (Seq l r) = (complete l `mul` epsilon r) `add` complete r
-complete (Alt l r) = complete l `add` complete r
-complete (Rep p) = complete p
-complete Eps = zero
-shift :: Semiring r => r -> Reg r -> Char -> Reg r
-shift e (Chr b c) s = Chr (e `mul` c s) c
-shift e (Seq l r) s = Seq (shift e l s) (shift ((e `mul` epsilon l) `add` complete l) r s)
-shift e (Alt l r) s = Alt (shift e l s) (shift e r s)
-shift e (Rep p) s = Rep $ shift (e `add` complete p) p s
-shift e Eps s = Eps
+chrC :: Semiring r => (Char -> r) -> RegC r
+chrC c = RegC (Chr c) zero zero
+seqC :: Semiring r => RegC r -> RegC r -> RegC r
+seqC l r = RegC (Seq l r) (isEps l `mul` isEps r) ((isComp l `mul` isEps r) `add` isComp r)
+altC :: Semiring r => RegC r -> RegC r -> RegC r
+altC l r = RegC (Alt l r) (isEps l `add` isEps r) (isComp l `add` isComp r)
+repC :: Semiring r => RegC r -> RegC r
+repC p = RegC (Rep p) one (isComp p)
+epsC :: Semiring r => RegC r
+epsC = RegC Eps one zero
 
-match :: Semiring r => Reg r -> String -> r
-match r [] = epsilon r
-match r (c:cs) = complete $ foldl (shift zero) ini cs where
-  ini = shift one r c
+shift :: Semiring r => r -> Reg r -> Char -> RegC r
+shift e (Chr c) s = (chrC c) { isComp = e `mul` c s }
+shift e (Seq l r) s = seqC (shiftR e l s) (shiftR ((e `mul` isEps l) `add` isComp l) r s)
+shift e (Alt l r) s = altC (shiftR e l s) (shiftR e r s)
+shift e (Rep p) s = repC $ shiftR (e `add` isComp p) p s
+shift e Eps s = epsC
+shiftR :: Semiring r => r -> RegC r -> Char -> RegC r
+shiftR e r s = shift e (regC r) s
+
+match :: Semiring r => RegC r -> String -> r
+match r [] = isEps r
+match r (c:cs) = isComp $ foldl (shiftR zero) ini cs where
+  ini = shiftR one r c
+  
