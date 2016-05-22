@@ -1,7 +1,8 @@
 import Graphics.Gloss
 
 main :: IO ()
-main = display (InWindow "po" (400,400) (400,400)) black pic
+main = animate (InWindow "po" (400,400) (400,400)) black pic
 
-pic :: Picture
-pic = pictures [ color red $ rectangleSolid 60.0 60.0, color yellow $ circleSolid 20.0 ]
+pic :: Float -> Picture
+pic t = pictures [ color red $ rectangleSolid 60.0 60.0, 
+                   color yellow $ translate (t*10-100) 0 $ circleSolid 20.0 ]
