@@ -84,17 +84,21 @@ parse p xs = safeHead $ filter (null.snd) $ runParser p xs where
 eval :: String -> Maybe Double
 eval = parse expr . filter (/=' ') where
   expr :: Parser Double
-  expr = term <|> do
-    l <- term
-    c <- char '+' <|> char '-'
-    r <- expr
-    return $ if c == '+' then l + r else l - r
+  expr = do
+    s <- term
+    es <- many $ do
+      c <- char '+' <|> char '-'
+      l <- term
+      return $ if c == '+' then (+l) else subtract l
+    return $ foldl (flip ($)) s es
   term :: Parser Double
   term = fact <|> do
-    l <- fact
-    c <- char '*' <|> char '/'
-    r <- term
-    return $ if c == '*' then l * r else l / r
+    s <- fact
+    es <- many $ do
+      c <- char '*' <|> char '/'
+      l <- term
+      return $ if c == '*' then (*l) else (/l)
+    return $ foldl (flip ($)) s es
   fact :: Parser Double
   fact = decimal <|> do
     char '('
@@ -120,16 +124,20 @@ readExpr :: String -> Maybe Expr
 readExpr = parse expr . filter (/=' ') where
   expr :: Parser Expr
   expr = term <|> do
-    l <- term
-    c <- char '+' <|> char '-'
-    r <- expr
-    return $ if c == '+' then Add l r else Sub l r
+    s <- term
+    es <- many $ do
+      c <- char '+' <|> char '-'
+      l <- term
+      return $ if c == '+' then (`Add`l) else (`Sub`l)
+    return $ foldl (flip ($)) s es
   term :: Parser Expr
   term = fact <|> do
-    l <- fact
-    c <- char '*' <|> char '/'
-    r <- term
-    return $ if c == '*' then Mul l r else Div l r
+    s <- fact
+    es <- many $ do
+      c <- char '*' <|> char '/'
+      l <- term
+      return $ if c == '*' then (`Mul`l) else (`Div`l)
+    return $ foldl (flip ($)) s es
   fact :: Parser Expr
   fact = do
     l <- negs
